@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width,initial-scale=1" name="viewport"/>
+  <title>
+   Dining Philosophers &mdash; Monitor
+  </title>
+  <style>
+   * {
+    box-sizing:border-box
+}
+
+body {
+    margin:0;
+    background:#f2f5fa;
+    color:#1e293b;
+    font:15px system-ui,Arial
+}
+
+header {
+    padding:18px 22px;
+    background:#183b35;
+    color:white
+}
+
+header h1 {
+    margin:0 0 4px
+}
+
+main {
+    max-width:1050px;
+    margin:18px auto;
+    padding:0 14px
+}
+
+.panel {
+    background:white;
+    border:1px solid #dce3ed;
+    border-radius:13px;
+    padding:14px;
+    margin-bottom:14px
+}
+
+.controls {
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    align-items:center
+}
+
+button,select {
+    padding:8px 11px;
+    border:1px solid #cbd5e1;
+    border-radius:8px;
+    background:white;
+    font:inherit;
+    cursor:pointer
+}
+
+button.primary {
+    background:#18745b;
+    color:white
+}
+
+#status {
+    font-weight:bold;
+    margin-left:auto
+}
+
+.stats {
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap
+}
+
+.stats span {
+    background:#f3f6fb;
+    border-radius:8px;
+    padding:8px 12px
+}
+
+svg {
+    width:100%;
+    max-height:500px
+}
+
+.pname {
+    font-size:16px;
+    font-weight:bold;
+    text-anchor:middle;
+    fill:#152238
+}
+
+.pstate {
+    font-size:12px;
+    text-anchor:middle;
+    fill:#152238
+}
+
+table {
+    border-collapse:collapse;
+    width:100%;
+    font-size:13px
+}
+
+th,td {
+    text-align:left;
+    padding:7px;
+    border-bottom:1px solid #e1e7ef
+}
+
+th {
+    background:#eef3f9;
+    position:sticky;
+    top:0
+}
+
+tr.active {
+    background:#dff8e8
+}
+
+.log {
+    max-height:330px;
+    overflow:auto
+}
+
+.muted {
+    color:#64748b;
+    font-size:13px
+}
+
+.progress {
+    height:7px;
+    background:#e4eaf2;
+    border-radius:10px;
+    overflow:hidden;
+    margin-top:10px
+}
+
+.progress div {
+    height:100%;
+    background:#18745b;
+    width:0%
+}
+  </style>
+ </head>
+ <body>
+  <header>
+   <h1>
+    Dining Philosophers &mdash; Monitor Animation
+   </h1>
+   <div>
+    4 philosophers &middot; state array + lock + condition variables
+   </div>
+  </header>
+  <main>
+   <section class="panel controls">
+    <button class="primary" id="play">
+     ▶ Play
+    </button>
+    <button id="pause">
+     Ⅱ Pause
+    </button>
+    <button id="step">
+     Step &rarr;
+    </button>
+    <button id="reset">
+     &olarr; Reset
+    </button>
+    <label>
+     Speed
+     <select id="speed">
+      <option value="1">
+       1&times;
+      </option>
+      <option value="2">
+       2&times;
+      </option>
+      <option value="4">
+       4&times;
+      </option>
+      <option value="0.5">
+       0.5&times;
+      </option>
+     </select>
+    </label>
+    <label>
+     Filter
+     <select id="filter">
+      <option value="all">
+       All
+      </option>
+      <option value="0">
+       P1
+      </option>
+      <option value="1">
+       P2
+      </option>
+      <option value="2">
+       P3
+      </option>
+      <option value="3">
+       P4
+      </option>
+     </select>
+    </label>
+    <button id="csv">
+     Download CSV
+    </button>
+    <span id="status">
+     Ready
+    </span>
+   </section>
+   <section class="panel stats">
+    <span>
+     Events:
+     <b id="count">
+      0
+     </b>
+    </span>
+    <span>
+     Current:
+     <b id="current">
+      0
+     </b>
+    </span>
+    <span>
+     Meals completed:
+     <b id="total">
+      0
+     </b>
+    </span>
+    <span>
+     Playback:
+     <b id="playing">
+      Paused
+     </b>
+    </span>
+    <div class="progress" style="width:100%">
+     <div id="bar">
+     </div>
+    </div>
+   </section>
+   <section class="panel">
+    <h2>
+     Table animation
+    </h2>
+    <p class="muted">
+     Green = eating, yellow = hungry/waiting, blue = thinking, grey = finished. The monitor allows a philosopher to eat only if neither neighbour is eating.
+    </p>
+    <svg aria-label="Four philosopher animation" viewbox="0 0 700 510">
+     <circle cx="350" cy="255" fill="#e9dfd0" r="110" stroke="#cdbda8" stroke-width="4">
+     </circle>
+     <text fill="#655647" font-size="20" font-weight="bold" text-anchor="middle" x="350" y="250">
+      MONITOR
+     </text>
+     <text fill="#655647" font-size="20" font-weight="bold" text-anchor="middle" x="350" y="275">
+      STATE
+     </text>
+     <g id="forks">
+     </g>
+     <g id="people">
+     </g>
+    </svg>
+   </section>
+   <section class="panel">
+    <h2>
+     Recorded execution log
+    </h2>
+    <div class="log">
+     <table>
+      <thead>
+       <tr>
+        <th>
+         #
+        </th>
+        <th>
+         Time
+        </th>
+        <th>
+         Philosopher
+        </th>
+        <th>
+         State
+        </th>
+        <th>
+         Action
+        </th>
+       </tr>
+      </thead>
+      <tbody id="rows">
+      </tbody>
+     </table>
+    </div>
+   </section>
+  </main>
+  <script>
+   const events=[{"seq": 1, "time": 0.001, "philosopher": 0, "state": "thinking", "message": "Thinking", "meals": 0}, {"seq": 2, "time": 0.002, "philosopher": 1, "state": "thinking", "message": "Thinking", "meals": 0}, {"seq": 3, "time": 0.002, "philosopher": 2, "state": "thinking", "message": "Thinking", "meals": 0}, {"seq": 4, "time": 0.002, "philosopher": 3, "state": "thinking", "message": "Thinking", "meals": 0}, {"seq": 5, "time": 0.401, "philosopher": 3, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 0}, {"seq": 6, "time": 0.401, "philosopher": 3, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 0}, {"seq": 7, "time": 0.426, "philosopher": 0, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 0}, {"seq": 8, "time": 0.426, "philosopher": 0, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 0}, {"seq": 9, "time": 0.463, "philosopher": 2, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 0}, {"seq": 10, "time": 0.463, "philosopher": 2, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 0}, {"seq": 11, "time": 0.566, "philosopher": 1, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 0}, {"seq": 12, "time": 0.566, "philosopher": 1, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 0}, {"seq": 13, "time": 0.899, "philosopher": 3, "state": "releasing", "message": "Finished meal 1; leaving eating state", "meals": 1}, {"seq": 14, "time": 0.899, "philosopher": 3, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 1}, {"seq": 15, "time": 0.899, "philosopher": 3, "state": "thinking", "message": "Thinking", "meals": 1}, {"seq": 16, "time": 0.899, "philosopher": 2, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 0}, {"seq": 17, "time": 0.899, "philosopher": 0, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 0}, {"seq": 18, "time": 0.993, "philosopher": 1, "state": "releasing", "message": "Finished meal 1; leaving eating state", "meals": 1}, {"seq": 19, "time": 0.993, "philosopher": 1, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 1}, {"seq": 20, "time": 0.993, "philosopher": 1, "state": "thinking", "message": "Thinking", "meals": 1}, {"seq": 21, "time": 0.994, "philosopher": 0, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 0}, {"seq": 22, "time": 0.994, "philosopher": 2, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 0}, {"seq": 23, "time": 1.4, "philosopher": 2, "state": "releasing", "message": "Finished meal 1; leaving eating state", "meals": 1}, {"seq": 24, "time": 1.4, "philosopher": 2, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 1}, {"seq": 25, "time": 1.4, "philosopher": 2, "state": "thinking", "message": "Thinking", "meals": 1}, {"seq": 26, "time": 1.404, "philosopher": 3, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 1}, {"seq": 27, "time": 1.405, "philosopher": 3, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 1}, {"seq": 28, "time": 1.589, "philosopher": 0, "state": "releasing", "message": "Finished meal 1; leaving eating state", "meals": 1}, {"seq": 29, "time": 1.589, "philosopher": 0, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 1}, {"seq": 30, "time": 1.589, "philosopher": 0, "state": "thinking", "message": "Thinking", "meals": 1}, {"seq": 31, "time": 1.589, "philosopher": 3, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 1}, {"seq": 32, "time": 1.687, "philosopher": 1, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 1}, {"seq": 33, "time": 1.688, "philosopher": 1, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 1}, {"seq": 34, "time": 1.981, "philosopher": 2, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 1}, {"seq": 35, "time": 1.981, "philosopher": 2, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 1}, {"seq": 36, "time": 1.992, "philosopher": 3, "state": "releasing", "message": "Finished meal 2; leaving eating state", "meals": 2}, {"seq": 37, "time": 1.992, "philosopher": 3, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 2}, {"seq": 38, "time": 1.992, "philosopher": 3, "state": "thinking", "message": "Thinking", "meals": 2}, {"seq": 39, "time": 1.992, "philosopher": 2, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 1}, {"seq": 40, "time": 2.022, "philosopher": 0, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 1}, {"seq": 41, "time": 2.023, "philosopher": 0, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 1}, {"seq": 42, "time": 2.179, "philosopher": 1, "state": "releasing", "message": "Finished meal 2; leaving eating state", "meals": 2}, {"seq": 43, "time": 2.179, "philosopher": 1, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 2}, {"seq": 44, "time": 2.179, "philosopher": 1, "state": "thinking", "message": "Thinking", "meals": 2}, {"seq": 45, "time": 2.18, "philosopher": 2, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 1}, {"seq": 46, "time": 2.18, "philosopher": 0, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 1}, {"seq": 47, "time": 2.34, "philosopher": 3, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 2}, {"seq": 48, "time": 2.34, "philosopher": 3, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 2}, {"seq": 49, "time": 2.544, "philosopher": 2, "state": "releasing", "message": "Finished meal 2; leaving eating state", "meals": 2}, {"seq": 50, "time": 2.544, "philosopher": 2, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 2}, {"seq": 51, "time": 2.544, "philosopher": 2, "state": "thinking", "message": "Thinking", "meals": 2}, {"seq": 52, "time": 2.545, "philosopher": 3, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 2}, {"seq": 53, "time": 2.574, "philosopher": 1, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 2}, {"seq": 54, "time": 2.574, "philosopher": 1, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 2}, {"seq": 55, "time": 2.679, "philosopher": 0, "state": "releasing", "message": "Finished meal 2; leaving eating state", "meals": 2}, {"seq": 56, "time": 2.679, "philosopher": 0, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 2}, {"seq": 57, "time": 2.679, "philosopher": 0, "state": "thinking", "message": "Thinking", "meals": 2}, {"seq": 58, "time": 2.68, "philosopher": 3, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 2}, {"seq": 59, "time": 2.68, "philosopher": 1, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 2}, {"seq": 60, "time": 2.847, "philosopher": 2, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 2}, {"seq": 61, "time": 2.847, "philosopher": 2, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 2}, {"seq": 62, "time": 3.048, "philosopher": 1, "state": "releasing", "message": "Finished meal 3; leaving eating state", "meals": 3}, {"seq": 63, "time": 3.049, "philosopher": 1, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 3}, {"seq": 64, "time": 3.049, "philosopher": 1, "state": "done", "message": "Finished all 3 meals", "meals": 3}, {"seq": 65, "time": 3.049, "philosopher": 2, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 2}, {"seq": 66, "time": 3.281, "philosopher": 0, "state": "hungry", "message": "Hungry; checking neighbour states", "meals": 2}, {"seq": 67, "time": 3.282, "philosopher": 0, "state": "waiting", "message": "Waiting because a neighbour is eating", "meals": 2}, {"seq": 68, "time": 3.305, "philosopher": 3, "state": "releasing", "message": "Finished meal 3; leaving eating state", "meals": 3}, {"seq": 69, "time": 3.306, "philosopher": 3, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 3}, {"seq": 70, "time": 3.306, "philosopher": 3, "state": "done", "message": "Finished all 3 meals", "meals": 3}, {"seq": 71, "time": 3.306, "philosopher": 2, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 2}, {"seq": 72, "time": 3.306, "philosopher": 0, "state": "eating", "message": "Both neighbours are not eating; started meal", "meals": 2}, {"seq": 73, "time": 3.784, "philosopher": 2, "state": "releasing", "message": "Finished meal 3; leaving eating state", "meals": 3}, {"seq": 74, "time": 3.785, "philosopher": 2, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 3}, {"seq": 75, "time": 3.785, "philosopher": 2, "state": "done", "message": "Finished all 3 meals", "meals": 3}, {"seq": 76, "time": 3.805, "philosopher": 0, "state": "releasing", "message": "Finished meal 3; leaving eating state", "meals": 3}, {"seq": 77, "time": 3.805, "philosopher": 0, "state": "thinking", "message": "Finished meal; changed state to thinking", "meals": 3}, {"seq": 78, "time": 3.805, "philosopher": 0, "state": "done", "message": "Finished all 3 meals", "meals": 3}],n=4;
+
+let idx=0,timer=null,running=false;
+const states=Array.from({
+    length:n},()=>({
+    state:'thinking',meals:0}));
+const colors={
+    thinking:'#4e83cc',hungry:'#f1c453',waiting:'#f1c453',eating:'#32a36b',releasing:'#a78bfa',done:'#8994a3'};
+const pos=[[350,70],[590,255],[350,440],[110,255]],fp=[[470,145],[470,365],[230,365],[230,145]],pg=document.getElementById('people'),fg=document.getElementById('forks');
+function el(tag,a,txt) {
+    let x=document.createElementNS('http://www.w3.org/2000/svg',tag);
+Object.entries(a||{}).forEach(([k,v])=>x.setAttribute(k,v));
+if(txt!==undefined)x.textContent=txt;
+return x}
+fp.forEach((p,i)=>{
+    let g=el('g',{});
+g.append(el('rect',{
+    x:p[0]-12,y:p[1]-18,width:24,height:36,rx:6,fill:'#b8c3d0',stroke:'#68778a','stroke-width':2}));
+g.append(el('text',{
+    x:p[0],y:p[1]+4,'text-anchor':'middle','font-size':11,fill:'#253247'},'F'+(i+1)));
+fg.append(g)});
+pos.forEach((p,i)=>{
+    let g=el('g',{});
+g.append(el('circle',{
+    cx:p[0],cy:p[1],r:37,fill:colors.thinking,stroke:'white','stroke-width':4}));
+g.append(el('text',{
+    x:p[0],y:p[1]-2,class:'pname'},'P'+(i+1)));
+g.append(el('text',{
+    x:p[0],y:p[1]+16,class:'pstate'},'Thinking'));
+pg.append(g)});
+
+function render() {
+    let f=document.getElementById('filter').value;
+[...pg.children].forEach((g,i)=>{
+    g.children[0].setAttribute('fill',colors[states[i].state]||'#4e83cc');
+g.children[2].textContent=states[i].state.replace('_',' ');
+g.setAttribute('opacity',f==='all'||+f===i?'1':'.25')});
+document.getElementById('count').textContent=events.length;
+document.getElementById('current').textContent=idx+' / '+events.length;
+document.getElementById('total').textContent=states.reduce((s,x)=>s+x.meals,0);
+document.getElementById('playing').textContent=running?'Playing':'Paused';
+document.getElementById('status').textContent=idx===0?'Ready':idx>=events.length?'Finished':'Event '+idx;
+document.getElementById('bar').style.width=(idx/events.length*100)+'%';
+let body=document.getElementById('rows');
+body.innerHTML='';
+let shown=events.map((e,j)=>({...e,j})).filter(e=>f==='all'||e.philosopher===+f),cur=shown.findIndex(e=>e.j===idx-1);
+shown.slice(Math.max(0,cur-5),cur+7).forEach(e=>{
+    let tr=document.createElement('tr');
+if(e.j===idx-1)tr.className='active';
+[e.seq,e.time.toFixed(3)+'s','P'+(e.philosopher+1),e.state,e.message].forEach(v=>{
+    let td=document.createElement('td');
+td.textContent=v;
+tr.append(td)});
+body.append(tr)})}
+function next() {
+    if(idx>=events.length) {
+    stop();
+return}
+let e=events[idx];
+states[e.philosopher]={
+    state:e.state,meals:e.meals};
+idx++;
+render();
+if(idx>=events.length)stop()}
+function stop() {
+    running=false;
+if(timer)clearTimeout(timer);
+timer=null;
+render()}
+function tick() {
+    if(!running)return;
+next();
+if(running)timer=setTimeout(tick,350/+document.getElementById('speed').value)}
+document.getElementById('play').onclick=()=>{
+    if(idx>=events.length)idx=0;
+running=true;
+render();
+tick()};
+document.getElementById('pause').onclick=stop;
+document.getElementById('step').onclick=()=>{
+    stop();
+next()};
+document.getElementById('reset').onclick=()=>{
+    stop();
+idx=0;
+states.forEach(s=>{
+    s.state='thinking';
+s.meals=0});
+render()};
+document.getElementById('speed').onchange=()=>{
+    if(running) {
+    clearTimeout(timer);
+tick()}};
+document.getElementById('filter').onchange=render;
+document.getElementById('csv').onclick=()=>{
+    let rows=[['seq','time','philosopher','state','message','meals'],...events.map(e=>[e.seq,e.time,'P'+(e.philosopher+1),e.state,e.message,e.meals])],csv=rows.map(r=>r.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
+a.href=URL.createObjectURL(new Blob([csv],{
+    type:'text/csv'}));
+a.download='monitor_events.csv';
+a.click();
+URL.revokeObjectURL(a.href)};
+render();
+  </script>
+ </body>
+</html>

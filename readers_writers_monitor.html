@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Readers-Writers (Monitor)</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f4f6f8; color: #1b2430; }
+  header { background: #1f3a5f; color: #fff; padding: 14px 22px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
+  main { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 16px 22px; }
+  .panel { background: #fff; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.15); margin-bottom: 14px; }
+  .panel h2 { margin: 0 0 10px; font-size: 15px; color: #1f3a5f; }
+  button, select { font-size: 14px; padding: 6px 14px; margin-right: 6px; border-radius: 5px; border: 1px solid #8a97a8; background: #fff; cursor: pointer; }
+  button.primary { background: #1f3a5f; color: #fff; border-color: #1f3a5f; }
+  #resource { text-align: center; padding: 18px; border-radius: 8px; border: 3px solid #9aa5b1; background: #eceff3; transition: all .25s; }
+  #resource.reading { border-color: #2e8b57; background: #e3f4ea; }
+  #resource.writing { border-color: #c0392b; background: #fbe6e3; }
+  #resource.violation { border-color: #000; background: #ffb3b3; }
+  #resource .big { font-size: 22px; font-weight: bold; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .card { width: 118px; padding: 10px; border-radius: 8px; text-align: center; border: 2px solid #9aa5b1; background: #eceff3; transition: all .25s; }
+  .card .name { font-weight: bold; font-size: 17px; }
+  .card .state { font-size: 13px; margin-top: 4px; }
+  .card .count { font-size: 11px; color: #555; margin-top: 4px; }
+  .card.waiting { background: #fff3cd; border-color: #e0a800; }
+  .card.reading { background: #d4f1e0; border-color: #2e8b57; }
+  .card.writing { background: #f8d7d3; border-color: #c0392b; }
+  .card.done { background: #d9dee5; border-color: #6c7a89; color: #555; }
+  .card.error { background: #000; color: #fff; }
+  #log { height: 430px; overflow-y: auto; font-family: Consolas, monospace; font-size: 12px; }
+  #log div { padding: 3px 4px; border-bottom: 1px solid #eef0f3; }
+  #log .WAITING { background: #fff8e1; } #log .ENTER { background: #e8f6ee; }
+  #log .EXIT { background: #eef2f7; } #log .DONE { color: #666; } #log .ERROR { background: #ffb3b3; }
+  .meta td { padding: 2px 10px 2px 0; font-size: 13px; }
+  .ok { color: #1e7d46; font-weight: bold; } .bad { color: #b00020; font-weight: bold; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Readers-Writers (Monitor)</h1>
+  <p>Writer priority using a lock and two condition variables &mdash; replay of a real execution trace (42 recorded events)</p>
+</header>
+<main>
+  <div>
+    <div class="panel">
+      <button class="primary" id="startBtn">Start / Resume</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">Reset</button>
+      Speed:
+      <select id="speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option>
+        <option value="2">2x</option><option value="4">4x</option></select>
+      <span id="progress" style="margin-left:10px;font-size:13px;"></span>
+    </div>
+    <div class="panel">
+      <h2>Shared resource</h2>
+      <div id="resource"><div class="big" id="resStatus">FREE</div><div id="resInfo"></div></div>
+    </div>
+    <div class="panel"><h2>Readers</h2><div class="row" id="readers"></div></div>
+    <div class="panel"><h2>Writers</h2><div class="row" id="writers"></div></div>
+    <div class="panel">
+      <h2>Checks</h2>
+      <table class="meta">
+        <tr><td>Python verification of this trace:</td><td id="pyCheck"></td></tr>
+        <tr><td>Browser check while replaying:</td><td id="jsCheck"></td></tr>
+        <tr><td>Max readers inside together (Python):</td><td id="maxReaders"></td></tr>
+        <tr><td>Generated at:</td><td id="generated"></td></tr>
+      </table>
+    </div>
+  </div>
+  <div>
+    <div class="panel"><h2>Event log (same # as the console output)</h2><div id="log"></div></div>
+  </div>
+</main>
+<script>
+const EVENTS = [{"seq": 1, "time": 0.0284, "thread": "R4", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 2, "time": 0.0284, "thread": "R4", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 3, "time": 0.0306, "thread": "R1", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 4, "time": 0.0306, "thread": "R1", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 5, "time": 0.0316, "thread": "R3", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 6, "time": 0.0316, "thread": "R3", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 7, "time": 0.0316, "thread": "W2", "role": "writer", "action": "WAITING", "detail": "requesting write access"}, {"seq": 8, "time": 0.0481, "thread": "R2", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 9, "time": 0.0509, "thread": "W1", "role": "writer", "action": "WAITING", "detail": "requesting write access"}, {"seq": 10, "time": 0.076, "thread": "R1", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 0"}, {"seq": 11, "time": 0.0771, "thread": "R4", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 0"}, {"seq": 12, "time": 0.09, "thread": "R3", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 0"}, {"seq": 13, "time": 0.0901, "thread": "W2", "role": "writer", "action": "ENTER", "detail": "entered critical section (writing)"}, {"seq": 14, "time": 0.1042, "thread": "R3", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 15, "time": 0.111, "thread": "R1", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 16, "time": 0.1225, "thread": "R4", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 17, "time": 0.1636, "thread": "W2", "role": "writer", "action": "EXIT", "detail": "finished writing, value = 1"}, {"seq": 18, "time": 0.1636, "thread": "W1", "role": "writer", "action": "ENTER", "detail": "entered critical section (writing)"}, {"seq": 19, "time": 0.1958, "thread": "W2", "role": "writer", "action": "WAITING", "detail": "requesting write access"}, {"seq": 20, "time": 0.1981, "thread": "W1", "role": "writer", "action": "EXIT", "detail": "finished writing, value = 2"}, {"seq": 21, "time": 0.1981, "thread": "W2", "role": "writer", "action": "ENTER", "detail": "entered critical section (writing)"}, {"seq": 22, "time": 0.2545, "thread": "W1", "role": "writer", "action": "WAITING", "detail": "requesting write access"}, {"seq": 23, "time": 0.2653, "thread": "W2", "role": "writer", "action": "EXIT", "detail": "finished writing, value = 3"}, {"seq": 24, "time": 0.2653, "thread": "W2", "role": "writer", "action": "DONE", "detail": "completed all rounds"}, {"seq": 25, "time": 0.2654, "thread": "W1", "role": "writer", "action": "ENTER", "detail": "entered critical section (writing)"}, {"seq": 26, "time": 0.3091, "thread": "W1", "role": "writer", "action": "EXIT", "detail": "finished writing, value = 4"}, {"seq": 27, "time": 0.3092, "thread": "W1", "role": "writer", "action": "DONE", "detail": "completed all rounds"}, {"seq": 28, "time": 0.3093, "thread": "R2", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 29, "time": 0.3093, "thread": "R3", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 30, "time": 0.3093, "thread": "R1", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 31, "time": 0.3094, "thread": "R4", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 32, "time": 0.3443, "thread": "R1", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 4"}, {"seq": 33, "time": 0.3443, "thread": "R1", "role": "reader", "action": "DONE", "detail": "completed all rounds"}, {"seq": 34, "time": 0.3463, "thread": "R3", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 4"}, {"seq": 35, "time": 0.3463, "thread": "R3", "role": "reader", "action": "DONE", "detail": "completed all rounds"}, {"seq": 36, "time": 0.3727, "thread": "R4", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 4"}, {"seq": 37, "time": 0.3728, "thread": "R4", "role": "reader", "action": "DONE", "detail": "completed all rounds"}, {"seq": 38, "time": 0.3817, "thread": "R2", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 4"}, {"seq": 39, "time": 0.4331, "thread": "R2", "role": "reader", "action": "WAITING", "detail": "requesting read access"}, {"seq": 40, "time": 0.4332, "thread": "R2", "role": "reader", "action": "ENTER", "detail": "entered critical section (reading)"}, {"seq": 41, "time": 0.4828, "thread": "R2", "role": "reader", "action": "EXIT", "detail": "finished reading, value = 4"}, {"seq": 42, "time": 0.4828, "thread": "R2", "role": "reader", "action": "DONE", "detail": "completed all rounds"}];
+const META = {"problems": [], "max_readers_together": 4, "generated": "2026-10-13 23:52:03"};
+
+const threads = {};      // name -> {role, state, rounds}
+let readersInside = new Set(), writersInside = new Set();
+let violations = 0, index = 0, playing = false, timer = null;
+
+function resetState() {
+  for (const k in threads) delete threads[k];
+  EVENTS.forEach(e => { if (!threads[e.thread]) threads[e.thread] = {role: e.role, state: "idle", rounds: 0}; });
+  readersInside = new Set(); writersInside = new Set(); violations = 0; index = 0;
+  document.getElementById("log").innerHTML = "";
+  render();
+}
+
+function applyEvent(e) {
+  const t = threads[e.thread];
+  if (e.action === "WAITING") t.state = "waiting";
+  else if (e.action === "ENTER") {
+    t.state = e.role === "reader" ? "reading" : "writing";
+    if (e.role === "reader") { if (writersInside.size > 0) violations++; readersInside.add(e.thread); }
+    else { if (readersInside.size > 0 || writersInside.size > 0) violations++; writersInside.add(e.thread); }
+  } else if (e.action === "EXIT") {
+    t.state = "idle"; t.rounds++;
+    readersInside.delete(e.thread); writersInside.delete(e.thread);
+  } else if (e.action === "DONE") t.state = "done";
+  else if (e.action === "ERROR") t.state = "error";
+
+  const line = document.createElement("div");
+  line.className = e.action;
+  line.textContent = "#" + e.seq + "  t=" + e.time.toFixed(3) + "s  " + e.thread + "  " + e.action + "  " + e.detail;
+  const log = document.getElementById("log");
+  log.appendChild(line); log.scrollTop = log.scrollHeight;
+}
+
+function render() {
+  for (const role of ["reader", "writer"]) {
+    const box = document.getElementById(role + "s");
+    box.innerHTML = "";
+    Object.keys(threads).filter(n => threads[n].role === role).forEach(n => {
+      const t = threads[n];
+      const d = document.createElement("div");
+      d.className = "card " + (t.state === "idle" ? "" : t.state);
+      d.innerHTML = '<div class="name">' + n + '</div><div class="state">' + t.state.toUpperCase() +
+                    '</div><div class="count">completed: ' + t.rounds + '</div>';
+      box.appendChild(d);
+    });
+  }
+  const res = document.getElementById("resource");
+  const status = document.getElementById("resStatus"), info = document.getElementById("resInfo");
+  res.className = "";
+  if (violations > 0) { res.className = "violation"; status.textContent = "RULE VIOLATED"; info.textContent = ""; }
+  else if (writersInside.size > 0) { res.className = "writing"; status.textContent = "WRITING (exclusive)"; info.textContent = "writer: " + [...writersInside].join(", "); }
+  else if (readersInside.size > 0) { res.className = "reading"; status.textContent = "READING (shared)"; info.textContent = readersInside.size + " reader(s): " + [...readersInside].join(", "); }
+  else { status.textContent = "FREE"; info.textContent = "nobody inside the critical section"; }
+  document.getElementById("progress").textContent = "event " + index + " / " + EVENTS.length;
+  const js = document.getElementById("jsCheck");
+  js.textContent = violations === 0 ? "no violations so far" : violations + " violation(s)";
+  js.className = violations === 0 ? "ok" : "bad";
+}
+
+function playNext() {
+  if (!playing) return;
+  if (index >= EVENTS.length) { playing = false; return; }
+  const e = EVENTS[index];
+  applyEvent(e); index++; render();
+  if (index < EVENTS.length) {
+    const speed = parseFloat(document.getElementById("speed").value);
+    const gap = Math.min((EVENTS[index].time - e.time) * 1000 / speed, 1500);
+    timer = setTimeout(playNext, gap);
+  } else playing = false;
+}
+
+document.getElementById("startBtn").onclick = () => {
+  if (playing) return;
+  if (index >= EVENTS.length) resetState();
+  playing = true; playNext();
+};
+document.getElementById("pauseBtn").onclick = () => { playing = false; clearTimeout(timer); };
+document.getElementById("stepBtn").onclick = () => {
+  playing = false; clearTimeout(timer);
+  if (index < EVENTS.length) { applyEvent(EVENTS[index]); index++; render(); }
+};
+document.getElementById("resetBtn").onclick = () => { playing = false; clearTimeout(timer); resetState(); };
+
+const py = document.getElementById("pyCheck");
+py.textContent = META.problems.length === 0 ? "PASSED" : "FAILED (" + META.problems.length + " problem(s))";
+py.className = META.problems.length === 0 ? "ok" : "bad";
+document.getElementById("maxReaders").textContent = META.max_readers_together;
+document.getElementById("generated").textContent = META.generated;
+resetState();
+</script>
+</body>
+</html>
